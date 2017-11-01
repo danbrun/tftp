@@ -1,0 +1,10 @@
+c:\Users\dbrun\Desktop\tftp\bin\Debug\netcoreapp2.0\tftp.deps.json
+c:\Users\dbrun\Desktop\tftp\bin\Debug\netcoreapp2.0\tftp.runtimeconfig.json
+c:\Users\dbrun\Desktop\tftp\bin\Debug\netcoreapp2.0\tftp.runtimeconfig.dev.json
+c:\Users\dbrun\Desktop\tftp\bin\Debug\netcoreapp2.0\tftp.dll
+c:\Users\dbrun\Desktop\tftp\bin\Debug\netcoreapp2.0\tftp.pdb
+c:\Users\dbrun\Desktop\tftp\obj\Debug\netcoreapp2.0\tftp.csproj.CoreCompileInputs.cache
+c:\Users\dbrun\Desktop\tftp\obj\Debug\netcoreapp2.0\tftp.AssemblyInfoInputs.cache
+c:\Users\dbrun\Desktop\tftp\obj\Debug\netcoreapp2.0\tftp.AssemblyInfo.cs
+c:\Users\dbrun\Desktop\tftp\obj\Debug\netcoreapp2.0\tftp.dll
+c:\Users\dbrun\Desktop\tftp\obj\Debug\netcoreapp2.0\tftp.pdb
