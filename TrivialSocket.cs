@@ -22,71 +22,97 @@ namespace tftp
 			size = _size - 4;
 
 			// Swap byte ordering
-			data = new byte[size];
+			var swap = new byte[size];
 			for (var i = 0; i < size; i++)
 			{
-				data[i] = _data[4 * ((i / 4) + 2) - (i % 4) - 1];
+				swap[i] = _data[4 * ((i / 4) + 2) - (i % 4) - 1];
 			}
+
+			// Swap bit ordering
+			var byteSwap = new BitArray(swap);
+			var bitSwap = new BitArray(byteSwap.Length);
+			for (var i = 0; i < byteSwap.Length; i++)
+			{
+				bitSwap[i] = byteSwap[8 * ((i / 8) + 1) - (i % 8) - 1];
+			}
+
+			data = new byte[size];
+			bitSwap.CopyTo(data, 0);
 		}
 
 		public bool Validate()
 		{
-			// for (int word = 4; word < size; word += 4)
-			// {
-			// 	var errors = new bool[5];
-			// 	var counts = new byte[] { 1, 2, 4, 8, 16 };
-			// 	for (var c = 0; c < 5; c++)
-			// 	{
-			// 		int sum = 0;
-			// 		int bit = counts[c] - 1;
-			// 		while (bit < 31)
-			// 		{
-			// 			for (int i = 0; i < counts[c]; i++)
-			// 			{
-			// 				sum += data[(word * 8) + (bit - i)] ? 1 : 0;
-			// 			}
-			// 			bit += counts[c];
-			// 		}
+			var bits = new BitArray(data);
 
-			// 		if (sum % 2 == 1)
-			// 		{
-			// 			errors[c] = true;
-			// 		}
-			// 	}
+			for (int word = 0; word < size - 1; word += 4)
+			{
+				var errors = new bool[] { false, false, false, false, false };
+				var counts = new byte[] { 1, 2, 4, 8, 16 };
+				for (var c = 0; c < 5; c++)
+				{
+					int bit = 32 - counts[c];
+					while (bit > 0)
+					{
+						for (int i = 0; i < counts[c]; i++)
+						{
+							if (bits[(word * 8) + (bit - i)])
+							{
+								errors[c] = !errors[c];
+							}
+						}
+						bit -= 2 * counts[c];
+					}
+				}
 
-			// 	var pos = 0;
-			// 	for (var c = 0; c < 5; c++)
-			// 	{
-			// 		if (errors[c])
-			// 		{
-			// 			pos += c;
-			// 		}
-			// 	}
-			// }
+				var pos = 0;
+				for (var c = 0; c < 5; c++)
+				{
+					if (errors[c])
+					{
+						pos += counts[c];
+					}
+				}
+
+				if (pos != 0)
+				{
+					var flip = (word * 8) + (32 - pos);
+					bits[flip] = !bits[flip];
+				}
+
+				var parity = false;
+				for (var bit = 0; bit < 32; bit++)
+				{
+					if (bits[(word * 8) + (31 - bit)])
+					{
+						parity = !parity;
+					}
+				}
+
+				if (parity)
+				{
+					return false;
+				}
+			}
+
+			data = new byte[size];
+			bits.CopyTo(data, 0);
 
 			return true;
 		}
 
 		public byte[] Extract()
 		{
-			// Swap bit ordering
-			var read = new BitArray(data);
-			var swap = new BitArray(read.Length);
-			for (var i = 0; i < swap.Length; i++)
-			{
-				swap[i] = read[8 * ((i / 8) + 1) - (i % 8) - 1];
-			}
-
 			var outSize = size * 13 / 16;
 
 			var pos = 0;
+			var bits = new BitArray(data);
 			var extract = new BitArray(outSize * 8);
 			for (var bit = 0; pos < extract.Length; bit++)
 			{
 				var i = bit % 32;
 				if (i != 0 && i != 16 && i != 24 && i != 28 && i != 30 && i != 31)
 				{
-					extract[pos++] = swap[bit];
+					extract[pos++] = bits[bit];
 				}
 			}
 
@@ -195,6 +221,10 @@ namespace tftp
 			socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
 			var opcode = new byte[] { 0, 1 };
+			if (errors)
+			{
+				opcode = new byte[] { 0, 2 };
+			}
 			var name = Encoding.ASCII.GetBytes(file);
 
 			var data = Program.combine<byte>(opcode, name, zero, octet, zero);
