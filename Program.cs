@@ -22,6 +22,7 @@ namespace tftp
 			socket.Download(args[2]);
 		}
 
+		// Helper function for combining two arrays
 		public static T[] combine<T>(params T[][] arrays)
 		{
 			var size = 0;
