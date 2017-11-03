@@ -16,18 +16,16 @@ namespace tftp
 
 		public Packet(int _size, byte[] _data)
 		{
+			// Get packet data
 			opcode = (ushort)_data[1];
 			block = (ushort)((_data[2] << 8) + _data[3]); ;
 			size = _size - 4;
 
 			// Swap byte ordering
 			data = new byte[size];
-			for (var i = 0; i < size; i += 4)
+			for (var i = 0; i < size; i++)
 			{
-				for (var j = 0; j < 4; j++)
-				{
-					data[i + j] = _data[i + (7 - j)];
-				}
+				data[i] = _data[4 * ((i / 4) + 2) - (i % 4) - 1];
 			}
 		}
 
@@ -74,12 +72,9 @@ namespace tftp
 			// Swap bit ordering
 			var read = new BitArray(data);
 			var swap = new BitArray(read.Length);
-			for (var i = 0; i < size; i++)
+			for (var i = 0; i < swap.Length; i++)
 			{
-				for (var j = 0; j < 8; j++)
-				{
-					swap[(i * 8) + j] = read[(i * 8) + (7 - j)];
-				}
+				swap[i] = read[8 * ((i / 8) + 1) - (i % 8) - 1];
 			}
 
 			var outSize = size * 13 / 16;
@@ -171,7 +166,7 @@ namespace tftp
 
 					if (packet.size < 512)
 					{
-						break;
+						return;
 					}
 
 					ACK(packet.block);
