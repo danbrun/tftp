@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -6,6 +7,100 @@ using System.Text;
 
 namespace tftp
 {
+	class Packet
+	{
+		public ushort opcode;
+		public ushort block;
+		public int size;
+		public byte[] data;
+
+		public Packet(int _size, byte[] _data)
+		{
+			opcode = (ushort)_data[1];
+			block = (ushort)((_data[2] << 8) + _data[3]); ;
+			size = _size - 4;
+
+			// Swap byte ordering
+			data = new byte[size];
+			for (var i = 0; i < size; i += 4)
+			{
+				for (var j = 0; j < 4; j++)
+				{
+					data[i + j] = _data[i + (7 - j)];
+				}
+			}
+		}
+
+		public bool Validate()
+		{
+			// for (int word = 4; word < size; word += 4)
+			// {
+			// 	var errors = new bool[5];
+			// 	var counts = new byte[] { 1, 2, 4, 8, 16 };
+			// 	for (var c = 0; c < 5; c++)
+			// 	{
+			// 		int sum = 0;
+			// 		int bit = counts[c] - 1;
+			// 		while (bit < 31)
+			// 		{
+			// 			for (int i = 0; i < counts[c]; i++)
+			// 			{
+			// 				sum += data[(word * 8) + (bit - i)] ? 1 : 0;
+			// 			}
+			// 			bit += counts[c];
+			// 		}
+
+			// 		if (sum % 2 == 1)
+			// 		{
+			// 			errors[c] = true;
+			// 		}
+			// 	}
+
+			// 	var pos = 0;
+			// 	for (var c = 0; c < 5; c++)
+			// 	{
+			// 		if (errors[c])
+			// 		{
+			// 			pos += c;
+			// 		}
+			// 	}
+			// }
+
+			return true;
+		}
+
+		public byte[] Extract()
+		{
+			// Swap bit ordering
+			var read = new BitArray(data);
+			var swap = new BitArray(read.Length);
+			for (var i = 0; i < size; i++)
+			{
+				for (var j = 0; j < 8; j++)
+				{
+					swap[(i * 8) + j] = read[(i * 8) + (7 - j)];
+				}
+			}
+
+			var outSize = size * 13 / 16;
+
+			var pos = 0;
+			var extract = new BitArray(outSize * 8);
+			for (var bit = 0; pos < extract.Length; bit++)
+			{
+				var i = bit % 32;
+				if (i != 0 && i != 16 && i != 24 && i != 28 && i != 30 && i != 31)
+				{
+					extract[pos++] = swap[bit];
+				}
+			}
+
+			var bytes = new byte[outSize];
+			extract.CopyTo(bytes, 0);
+			return bytes;
+		}
+	}
+
 	class TrivialSocket
 	{
 		static readonly byte[] octet = Encoding.ASCII.GetBytes("octet");
@@ -35,24 +130,52 @@ namespace tftp
 		{
 			RRQ(file);
 
-			while (true)
+			var offset = 0;
+			using (var disk = new FileStream(file, FileMode.Create))
 			{
-				var (size, block, error) = DATA();
 
-				Console.WriteLine("Read block {0}", block);
-
-				if (error)
+				while (true)
 				{
-					NACK(block);
-					continue;
-				}
+					var packet = DATA();
 
-				if (size < 516)
-				{
-					return;
-				}
+					if (packet.opcode == 5)
+					{
+						Console.WriteLine("Error: " + Encoding.ASCII.GetString(packet.data, 2, packet.data.Length - 2));
+						return;
+					}
 
-				ACK(block);
+					if (!packet.Validate())
+					{
+						NACK(packet.block);
+						continue;
+					}
+
+					var extracted = packet.Extract();
+
+					int trim = 0;
+					if (packet.size < 512 && packet.size > 0)
+					{
+						for (int i = 0; i < 4; i++)
+						{
+							if (extracted[extracted.Length - i - 1] != 0)
+							{
+								break;
+							}
+							trim++;
+						}
+					}
+
+					disk.Write(extracted, 0, extracted.Length - trim);
+					disk.Flush();
+					offset += extracted.Length;
+
+					if (packet.size < 512)
+					{
+						break;
+					}
+
+					ACK(packet.block);
+				}
 			}
 		}
 
@@ -62,7 +185,18 @@ namespace tftp
 		// @param file The file to request
 		void RRQ(string file)
 		{
-			dest = new IPEndPoint(Dns.GetHostAddresses(host)[0], 7000);
+			var addresses = Dns.GetHostAddresses(host);
+			IPAddress ip = addresses[0];
+			foreach (var addr in addresses)
+			{
+				if (addr.AddressFamily == AddressFamily.InterNetwork)
+				{
+					ip = addr;
+					break;
+				}
+			}
+
+			dest = new IPEndPoint(ip, 7000);
 			socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
 			var opcode = new byte[] { 0, 1 };
@@ -76,12 +210,11 @@ namespace tftp
 		// Reads a UDP packet from the server
 		//
 		// @returns A tuple with the number of bytes read, block number, and error flag
-		(int size, ushort block, bool error) DATA()
+		Packet DATA()
 		{
 			var data = new byte[516];
 			var length = socket.Receive(data);
-			var block = (ushort)((data[2] << 8) + data[3]);
-			return (length, block, false);
+			return new Packet(length, data);
 		}
 
 		//
@@ -92,12 +225,6 @@ namespace tftp
 		{
 			var data = new byte[] { 0, 4, (byte)(block >> 8), (byte)block };
 			socket.SendTo(data, dest);
-
-			foreach (var a in data)
-			{
-				Console.Write(a + " ");
-			}
-			Console.WriteLine();
 		}
 
 		//
